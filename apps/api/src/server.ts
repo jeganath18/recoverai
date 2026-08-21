@@ -1,7 +1,11 @@
+import "dotenv/config";
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import rawBody from "fastify-raw-body";
 import { prisma } from "./db/prisma";
 import { testRoutes } from "./routes/test.routes";
+import { razorpayRoutes } from "./routes/razorpay.routes";
+import { razorpayWebhook } from "./webhooks/razorpay-webhook";
 
 const app = Fastify({
   logger: true,
@@ -14,6 +18,14 @@ const start = async (): Promise<void> => {
     });
 
     await app.register(testRoutes);
+    await app.register(razorpayRoutes);
+    await app.register(rawBody, {
+      field: "rawBody",
+      global: false,
+      encoding: "utf8",
+      runFirst: true,
+    });
+    await app.register(razorpayWebhook);
 
     app.get("/health", async () => {
       await prisma.$queryRaw`SELECT 1`;
