@@ -1,5 +1,7 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
+import { prisma } from "./db/prisma";
+import { testRoutes } from "./routes/test.routes";
 
 const app = Fastify({
   logger: true,
@@ -11,10 +13,15 @@ const start = async (): Promise<void> => {
       origin: true,
     });
 
+    await app.register(testRoutes);
+
     app.get("/health", async () => {
+      await prisma.$queryRaw`SELECT 1`;
+
       return {
         status: "ok",
         service: "recoverai-api",
+        database: "connected",
         timestamp: new Date().toISOString(),
       };
     });
@@ -27,6 +34,7 @@ const start = async (): Promise<void> => {
     console.log("RecoverAI API running on http://localhost:5000");
   } catch (error) {
     app.log.error(error);
+    await prisma.$disconnect();
     process.exit(1);
   }
 };
