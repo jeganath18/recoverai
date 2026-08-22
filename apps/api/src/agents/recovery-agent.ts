@@ -1,8 +1,4 @@
 import {
-  diagnosePaymentFailure,
-} from "./diagnosis-agent";
-
-import {
   analyzeFailedPayment,
   type RecoveryDecision,
 } from "../ai/recovery-agent";
@@ -14,8 +10,8 @@ import {
 
 export type RecoveryAgentResult = {
   diagnosis: {
-    classification: string;
-    recoverability: string;
+    classification: RecoveryDecision["classification"];
+    recoverability: RecoveryDecision["recoverability"];
     confidence: number;
     reason: string;
   };
@@ -31,12 +27,27 @@ export async function runRecoveryAgent(input: {
   failureReason: string;
   previousAttempts: number;
 }): Promise<RecoveryAgentResult> {
-  const diagnosis =
-    await diagnosePaymentFailure(input);
 
+  // One GPT call only.
   const recommendation =
     await analyzeFailedPayment(input);
 
+  // Derive diagnosis from the same AI response.
+  const diagnosis = {
+    classification:
+      recommendation.classification,
+
+    recoverability:
+      recommendation.recoverability,
+
+    confidence:
+      recommendation.confidence,
+
+    reason:
+      recommendation.reason,
+  };
+
+  // Hard safety rules run AFTER AI.
   const policy =
     evaluateRecoveryDecision(
       recommendation,

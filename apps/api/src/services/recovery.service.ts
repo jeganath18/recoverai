@@ -1,56 +1,6 @@
 import { prisma } from "../db/prisma";
-
-type RecoveryDecision = {
-  recoverable: boolean;
-  action: string;
-};
-
-function determineRecoveryAction(
-  failureReason: string,
-): RecoveryDecision {
-  const reason = failureReason.toLowerCase();
-
-  // Never automatically recover potentially fraudulent payments.
-  if (
-    reason.includes("fraud") ||
-    reason.includes("suspected") ||
-    reason.includes("stolen")
-  ) {
-    return {
-      recoverable: false,
-      action: "STOP_AND_REVIEW",
-    };
-  }
-
-  // Temporary payment issues can usually be retried.
-  if (
-    reason.includes("network") ||
-    reason.includes("timeout") ||
-    reason.includes("temporary")
-  ) {
-    return {
-      recoverable: true,
-      action: "RETRY_PAYMENT",
-    };
-  }
-
-  // Insufficient funds should not be retried immediately.
-  if (
-    reason.includes("insufficient") ||
-    reason.includes("funds")
-  ) {
-    return {
-      recoverable: true,
-      action: "CUSTOMER_OUTREACH",
-    };
-  }
-
-  // Unknown failures require a safe human/customer intervention.
-  return {
-    recoverable: true,
-    action: "CUSTOMER_OUTREACH",
-  };
-}
+import { buildRecoveryContext } from "./audit.service";
+import { runRecoveryAgent } from "../agents/recovery-agent";
 
 export async function processFailedPayment(
   paymentId: string,
@@ -63,12 +13,12 @@ export async function processFailedPayment(
   });
 
   if (!payment) {
-    throw new Error(`Payment ${paymentId} not found`);
+    throw new Error(
+      `Payment ${paymentId} not found`,
+    );
   }
 
-  const decision = determineRecoveryAction(failureReason);
-
-  // Update the payment itself.
+  // Persist the failure first.
   await prisma.payment.update({
     where: {
       id: paymentId,
@@ -79,23 +29,13 @@ export async function processFailedPayment(
     },
   });
 
-  // Fraud/suspicious payments should not enter an automatic
-  // recovery workflow.
-  if (!decision.recoverable) {
-    return {
-      paymentId,
-      recoverable: false,
-      action: decision.action,
-      recoveryCase: null,
-    };
-  }
-
-  // Avoid creating duplicate recovery cases.
-  const existingCase = await prisma.recoveryCase.findUnique({
-    where: {
-      paymentId,
-    },
-  });
+  // Prevent duplicate recovery cases.
+  const existingCase =
+    await prisma.recoveryCase.findUnique({
+      where: {
+        paymentId,
+      },
+    });
 
   if (existingCase) {
     return {
@@ -106,20 +46,46 @@ export async function processFailedPayment(
     };
   }
 
-  const recoveryCase = await prisma.recoveryCase.create({
-    data: {
-      paymentId,
-      amountAtRisk: payment.amount,
-      status: "OPEN",
+  // Build context from PostgreSQL.
+  const context =
+    await buildRecoveryContext(paymentId);
+
+  const previousAttempts =
+    context.history.previousRecoveryAttempts;
+
+  // Ask the AI agent for a recommendation.
+  const agentResult =
+    await runRecoveryAgent({
+      amount: payment.amount,
+      currency: payment.currency,
       failureReason,
-      recommendedAction: decision.action,
-    },
-  });
+      previousAttempts,
+    });
+
+  const policy = agentResult.policy;
+
+  // Policy decides whether automatic recovery
+  // is actually allowed.
+  const recoveryCase =
+    await prisma.recoveryCase.create({
+      data: {
+        paymentId,
+        amountAtRisk: payment.amount,
+        status: policy.allowed
+          ? "OPEN"
+          : "REVIEW_REQUIRED",
+        failureReason,
+        recommendedAction: policy.action,
+      },
+    });
 
   return {
     paymentId,
-    recoverable: true,
-    action: decision.action,
+    recoverable: policy.allowed,
+    action: policy.action,
     recoveryCase,
+    diagnosis: agentResult.diagnosis,
+    recommendation: agentResult.recommendation,
+    policy,
   };
 }
