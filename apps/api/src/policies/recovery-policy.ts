@@ -1,79 +1,73 @@
 import type { RecoveryDecision } from "../ai/recovery-agent";
 
-export type PolicyResult = {
+export type RecoveryAction =
+  | "RETRY_PAYMENT"
+  | "CUSTOMER_OUTREACH"
+  | "STOP_AND_REVIEW";
+
+export type PolicyDecision = {
   allowed: boolean;
-  action:
-    | "RETRY_PAYMENT"
-    | "CUSTOMER_OUTREACH"
-    | "STOP_AND_REVIEW";
+  action: RecoveryAction;
   reason: string;
 };
 
-export function enforceRecoveryPolicy(
+const MAX_RETRIES = 2;
+const MIN_RETRY_CONFIDENCE = 0.75;
+const MAX_AUTO_RETRY_AMOUNT = 1_000_000; // ₹10,000 in paise
+
+export function evaluateRecoveryPolicy(
   decision: RecoveryDecision,
   amount: number,
-): PolicyResult {
-  // NEVER automatically act on fraud-risk payments.
+): PolicyDecision {
+  if (amount <= 0) {
+    return {
+      allowed: false,
+      action: "STOP_AND_REVIEW",
+      reason: "Payment amount must be greater than zero.",
+    };
+  }
+
   if (decision.classification === "FRAUD_RISK") {
     return {
       allowed: false,
       action: "STOP_AND_REVIEW",
       reason:
-        "Fraud-risk payment requires manual review.",
+        "Fraud-risk payments cannot be automatically recovered.",
     };
   }
 
-  // AI can never request more than 2 retries.
-  if (decision.maxRetries > 2) {
-    return {
-      allowed: false,
-      action: "STOP_AND_REVIEW",
-      reason:
-        "Requested retry count exceeds the system safety limit.",
-    };
-  }
+  if (decision.recommendedAction === "RETRY_PAYMENT") {
+    if (decision.maxRetries > MAX_RETRIES) {
+      return {
+        allowed: false,
+        action: "STOP_AND_REVIEW",
+        reason:
+          `Retry limit exceeds maximum allowed retries (${MAX_RETRIES}).`,
+      };
+    }
 
-  // Invalid payment amounts are never recoverable.
-  if (amount <= 0) {
-    return {
-      allowed: false,
-      action: "STOP_AND_REVIEW",
-      reason: "Invalid payment amount.",
-    };
-  }
+    if (decision.confidence < MIN_RETRY_CONFIDENCE) {
+      return {
+        allowed: false,
+        action: "STOP_AND_REVIEW",
+        reason:
+          "AI confidence is below the automatic retry threshold.",
+      };
+    }
 
-  // Don't automatically retry high-value transactions.
-  // ₹10,000 = 1,000,000 paise.
-  if (
-    amount > 1_000_000 &&
-    decision.recommendedAction === "RETRY_PAYMENT"
-  ) {
-    return {
-      allowed: false,
-      action: "STOP_AND_REVIEW",
-      reason:
-        "High-value automatic retry requires manual review.",
-    };
-  }
-
-  // Low-confidence decisions shouldn't trigger
-  // automatic payment actions.
-  if (
-    decision.confidence < 0.75 &&
-    decision.recommendedAction === "RETRY_PAYMENT"
-  ) {
-    return {
-      allowed: false,
-      action: "STOP_AND_REVIEW",
-      reason:
-        "AI confidence is below the automatic retry threshold.",
-    };
+    if (amount > MAX_AUTO_RETRY_AMOUNT) {
+      return {
+        allowed: false,
+        action: "STOP_AND_REVIEW",
+        reason:
+          "High-value payments require manual review before retry.",
+      };
+    }
   }
 
   return {
     allowed: true,
     action: decision.recommendedAction,
-    reason:
-      "AI recommendation satisfies RecoverAI safety policy.",
+    reason: "Recovery recommendation passed policy checks.",
   };
 }
