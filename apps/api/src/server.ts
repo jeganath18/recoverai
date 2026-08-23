@@ -6,6 +6,7 @@ import { prisma } from "./db/prisma";
 import { testRoutes } from "./routes/test.routes";
 import { razorpayRoutes } from "./routes/razorpay.routes";
 import { razorpayWebhook } from "./webhooks/razorpay-webhook";
+import { recoveryRoutes } from "./routes/recovery.routes";
 
 const app = Fastify({
   logger: true,
@@ -26,6 +27,7 @@ const start = async (): Promise<void> => {
       runFirst: true,
     });
     await app.register(razorpayWebhook);
+    await app.register(recoveryRoutes);
 
     app.get("/health", async () => {
       await prisma.$queryRaw`SELECT 1`;

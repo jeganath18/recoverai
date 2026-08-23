@@ -4,7 +4,7 @@ import { recoveryQueue } from "../src/queue/recovery.queue";
 
 async function main() {
   const paymentId =
-    "cmt2s7zar0000trkx02o50wu8";
+    "cmt5dpm720004trosd15hr8e3";
 
   const job = await recoveryQueue.add(
     "payment-failed",
