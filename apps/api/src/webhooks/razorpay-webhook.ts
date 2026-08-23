@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { FastifyInstance } from "fastify";
 import { prisma } from "../db/prisma";
 import { processFailedPayment } from "../services/recovery.service";
+import { recoveryQueue } from "../queue/recovery.queue";
 
 
 export async function razorpayWebhook(app: FastifyInstance) {
@@ -105,9 +106,22 @@ export async function razorpayWebhook(app: FastifyInstance) {
                     paymentEntity?.error_description ??
                     "Unknown payment failure";
 
-                await processFailedPayment(
-                    payment.id,
-                    failureReason,
+                await recoveryQueue.add(
+                    "payment-failed",
+                    {
+                        paymentId: payment.id,
+                        failureReason,
+                    },
+                    {
+                        jobId: `payment-failed-${payment.id}`,
+                        attempts: 3,
+                        backoff: {
+                            type: "exponential",
+                            delay: 2000,
+                        },
+                        removeOnComplete: true,
+                        removeOnFail: false,
+                    },
                 );
             }
 
