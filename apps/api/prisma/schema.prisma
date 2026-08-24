@@ -8,51 +8,51 @@ datasource db {
 }
 
 model Customer {
-  id        String   @id @default(cuid())
-  externalId String? @unique
-  name      String?
-  email     String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(cuid())
+  externalId String?  @unique
+  name       String?
+  email      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  orders    Order[]
-  payments  Payment[]
+  orders   Order[]
+  payments Payment[]
 
   @@index([email])
 }
 
 model Order {
-  id          String   @id @default(cuid())
-  razorpayId  String   @unique
-  customerId  String?
-  amount      Int
-  currency    String   @default("INR")
-  status      String
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  razorpayId String   @unique
+  customerId String?
+  amount     Int
+  currency   String   @default("INR")
+  status     String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  customer    Customer? @relation(fields: [customerId], references: [id])
-  payments    Payment[]
+  customer Customer? @relation(fields: [customerId], references: [id])
+  payments Payment[]
 
   @@index([customerId])
 }
 
 model Payment {
-  id             String   @id @default(cuid())
-  razorpayId     String   @unique
-  orderId        String?
-  customerId     String?
-  amount         Int
-  currency       String   @default("INR")
-  status         String
-  failureReason  String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id            String   @id @default(cuid())
+  razorpayId    String   @unique
+  orderId       String?
+  customerId    String?
+  amount        Int
+  currency      String   @default("INR")
+  status        String
+  failureReason String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  order          Order?    @relation(fields: [orderId], references: [id])
-  customer       Customer? @relation(fields: [customerId], references: [id])
-  events         PaymentEvent[]
-  recoveryCase   RecoveryCase?
+  order        Order?         @relation(fields: [orderId], references: [id])
+  customer     Customer?      @relation(fields: [customerId], references: [id])
+  events       PaymentEvent[]
+  recoveryCase RecoveryCase?
 
   @@index([orderId])
   @@index([customerId])
@@ -60,29 +60,81 @@ model Payment {
 }
 
 model PaymentEvent {
-  id          String   @id @default(cuid())
-  paymentId   String?
-  eventType   String
-  payload     Json
-  receivedAt  DateTime @default(now())
+  id              String   @id @default(cuid())
+  razorpayEventId String   @unique
+  paymentId       String?
+  eventType       String
+  payload         Json
+  receivedAt      DateTime @default(now())
 
-  payment     Payment? @relation(fields: [paymentId], references: [id])
+  payment Payment? @relation(fields: [paymentId], references: [id])
 
   @@index([paymentId])
   @@index([eventType])
 }
 
+enum RecoveryCaseStatus {
+  OPEN
+  RETRYING
+  OUTREACH
+  RECOVERED
+  EXHAUSTED
+  MANUAL_REVIEW
+  ABANDONED
+}
+
 model RecoveryCase {
-  id                String   @id @default(cuid())
-  paymentId         String   @unique
+  id                String             @id @default(cuid())
+  paymentId         String             @unique
   amountAtRisk      Int
-  status            String
+  status            RecoveryCaseStatus @default(OPEN)
   failureReason     String?
   recommendedAction String?
-  amountRecovered   Int      @default(0)
-  retryAttempts     Int      @default(0)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  amountRecovered   Int                @default(0)
+  retryAttempts     Int                @default(0)
+  outreachAttempts  Int                @default(0)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 
-  payment           Payment  @relation(fields: [paymentId], references: [id])
+  payment  Payment           @relation(fields: [paymentId], references: [id])
+  attempts RecoveryAttempt[]
+  audits   AuditEvent[]
+
+  @@index([status])
+}
+
+model RecoveryAttempt {
+  id             String   @id @default(cuid())
+  caseId         String
+  attemptNumber  Int
+  action         String
+  status         String
+  idempotencyKey String   @unique
+  externalId     String?
+  input          Json
+  output         Json?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  recoveryCase RecoveryCase @relation(fields: [caseId], references: [id])
+
+  @@unique([caseId, attemptNumber])
+  @@index([caseId])
+  @@index([action])
+}
+
+model AuditEvent {
+  id        String   @id @default(cuid())
+  caseId    String?
+  stage     String
+  actor     String
+  input     Json
+  output    Json
+  createdAt DateTime @default(now())
+
+  recoveryCase RecoveryCase? @relation(fields: [caseId], references: [id])
+
+  @@index([caseId])
+  @@index([stage])
+  @@index([actor])
 }

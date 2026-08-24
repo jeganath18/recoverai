@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { FastifyInstance } from "fastify";
 import { prisma } from "../db/prisma";
-import { processFailedPayment } from "../services/recovery.service";
+import { Prisma } from "@prisma/client";
 import { recoveryQueue } from "../queue/recovery.queue";
 
 
@@ -57,6 +57,18 @@ export async function razorpayWebhook(app: FastifyInstance) {
                 });
             }
 
+            const razorpayEventId =
+                request.headers["x-razorpay-event-id"];
+
+            if (
+                !razorpayEventId ||
+                typeof razorpayEventId !== "string"
+            ) {
+                return reply.code(400).send({
+                    error: "Missing Razorpay event ID",
+                });
+            }
+
             const payload = request.body as {
                 event?: string;
                 payload?: {
@@ -93,13 +105,33 @@ export async function razorpayWebhook(app: FastifyInstance) {
                 })
                 : null;
 
-            await prisma.paymentEvent.create({
-                data: {
-                    paymentId: payment?.id ?? null,
-                    eventType,
-                    payload: payload as any,
-                },
-            });
+            try {
+                await prisma.paymentEvent.create({
+                    data: {
+                        razorpayEventId,
+                        paymentId: payment?.id ?? null,
+                        eventType,
+                        payload: payload as any,
+                    },
+                });
+            } catch (error) {
+                if (
+                    error instanceof Prisma.PrismaClientKnownRequestError &&
+                    error.code === "P2002"
+                ) {
+                    request.log.info(
+                        { razorpayEventId },
+                        "Duplicate Razorpay webhook ignored",
+                    );
+
+                    return reply.code(200).send({
+                        received: true,
+                        duplicate: true,
+                    });
+                }
+
+                throw error;
+            }
 
             if (eventType === "payment.failed" && payment?.id) {
                 const failureReason =

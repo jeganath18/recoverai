@@ -75,7 +75,7 @@ export async function retryPaymentTool(
         paymentId,
       },
       data: {
-        status: "REVIEW_REQUIRED",
+        status: "MANUAL_REVIEW",
       },
     });
 
@@ -98,7 +98,7 @@ export async function retryPaymentTool(
         retryAttempts: {
           increment: 1,
         },
-        status: "RECOVERY_ATTEMPTED",
+        status: "RETRYING",
       },
     });
 

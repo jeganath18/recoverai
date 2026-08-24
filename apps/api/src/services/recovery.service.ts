@@ -73,7 +73,7 @@ export async function processFailedPayment(
         amountAtRisk: payment.amount,
         status: policy.allowed
           ? "OPEN"
-          : "REVIEW_REQUIRED",
+          : "MANUAL_REVIEW",
         failureReason,
         recommendedAction: policy.action,
       },

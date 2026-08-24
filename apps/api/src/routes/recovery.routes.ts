@@ -62,7 +62,7 @@ export async function recoveryRoutes(
             paymentId,
           },
           data: {
-            status: "REVIEW_REQUIRED",
+            status: "MANUAL_REVIEW",
           },
         });
 
@@ -87,7 +87,7 @@ export async function recoveryRoutes(
           retryAttempts: {
             increment: 1,
           },
-          status: "RECOVERY_ATTEMPTED",
+          status: "RETRYING",
         },
       });
 
