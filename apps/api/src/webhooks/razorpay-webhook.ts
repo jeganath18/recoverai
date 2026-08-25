@@ -3,6 +3,7 @@ import { FastifyInstance } from "fastify";
 import { prisma } from "../db/prisma";
 import { Prisma } from "@prisma/client";
 import { recoveryDecisionQueue } from "../queue/recovery.queue";
+import { markPaymentRecovered } from "../services/recovery-state.service";
 
 
 export async function razorpayWebhook(app: FastifyInstance) {
@@ -149,6 +150,36 @@ export async function razorpayWebhook(app: FastifyInstance) {
                         jobId: `razorpay-event-${razorpayEventId}`,
                     },
                 );
+            }
+
+            if (eventType === "payment.captured" && payment?.id) {
+                try {
+                    const result = await markPaymentRecovered(
+                        payment.id,
+                        "razorpay",
+                    );
+
+                    request.log.info(
+                        {
+                            paymentId: payment.id,
+                            recoveryCaseId:
+                                result.recoveryCase?.id,
+                            amountRecovered:
+                                result.recoveryCase?.amountRecovered ?? 0,
+                        },
+                        "Payment captured and recovery completed",
+                    );
+                } catch (error) {
+                    request.log.error(
+                        {
+                            paymentId: payment.id,
+                            error,
+                        },
+                        "Failed to mark payment as recovered",
+                    );
+
+                    throw error;
+                }
             }
 
             return reply.code(200).send({
