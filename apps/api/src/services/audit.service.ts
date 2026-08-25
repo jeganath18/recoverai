@@ -71,26 +71,43 @@ export async function buildRecoveryContext(
       currency: payment.currency,
       status: payment.status,
       failureReason: payment.failureReason,
+      recoveryCase: payment.recoveryCase
+        ? {
+          id: payment.recoveryCase.id,
+          status: payment.recoveryCase.status,
+          retryAttempts: payment.recoveryCase.retryAttempts,
+          outreachAttempts:
+            payment.recoveryCase.outreachAttempts,
+          amountAtRisk:
+            payment.recoveryCase.amountAtRisk,
+          amountRecovered:
+            payment.recoveryCase.amountRecovered,
+          failureReason:
+            payment.recoveryCase.failureReason,
+          recommendedAction:
+            payment.recoveryCase.recommendedAction,
+        }
+        : null,
     },
 
     customer: payment.customer
       ? {
-          id: payment.customer.id,
-          name: payment.customer.name,
-          email: payment.customer.email,
-          successfulPayments,
-          failedPayments,
-          totalPaid,
-        }
+        id: payment.customer.id,
+        name: payment.customer.name,
+        email: payment.customer.email,
+        successfulPayments,
+        failedPayments,
+        totalPaid,
+      }
       : null,
 
     order: payment.order
       ? {
-          id: payment.order.id,
-          amount: payment.order.amount,
-          currency: payment.order.currency,
-          status: payment.order.status,
-        }
+        id: payment.order.id,
+        amount: payment.order.amount,
+        currency: payment.order.currency,
+        status: payment.order.status,
+      }
       : null,
 
     history: {

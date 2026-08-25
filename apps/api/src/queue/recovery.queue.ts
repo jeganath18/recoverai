@@ -1,13 +1,50 @@
 import { Queue } from "bullmq";
-import IORedis from "ioredis";
+import { redisConnection } from "./connection";
 
-const connection = new IORedis(
-  process.env.REDIS_URL || "redis://localhost:6379",
+export const recoveryDecisionQueue = new Queue(
+  "recovery-decision",
   {
-    maxRetriesPerRequest: null,
+    connection: redisConnection,
+    defaultJobOptions: {
+      attempts: 3,
+      backoff: {
+        type: "exponential",
+        delay: 2000,
+      },
+      removeOnComplete: 100,
+      removeOnFail: false,
+    },
   },
 );
 
-export const recoveryQueue = new Queue("recovery", {
-  connection,
-});
+export const retryExecutionQueue = new Queue(
+  "retry-execution",
+  {
+    connection: redisConnection,
+    defaultJobOptions: {
+      attempts: 3,
+      backoff: {
+        type: "exponential",
+        delay: 5000,
+      },
+      removeOnComplete: 100,
+      removeOnFail: false,
+    },
+  },
+);
+
+export const outreachExecutionQueue = new Queue(
+  "outreach-execution",
+  {
+    connection: redisConnection,
+    defaultJobOptions: {
+      attempts: 3,
+      backoff: {
+        type: "exponential",
+        delay: 5000,
+      },
+      removeOnComplete: 100,
+      removeOnFail: false,
+    },
+  },
+);

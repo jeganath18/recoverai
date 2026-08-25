@@ -8,7 +8,9 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "worker:decision": "tsx src/workers/index.ts",
+    "worker:retry": "tsx src/workers/retry-execution.worker.ts"
   },
   "keywords": [],
   "author": "",

@@ -5,6 +5,8 @@ import {
 
 import type { RecoveryDecision } from "../ai/recovery-agent";
 
+export type { PolicyDecision };
+
 export function evaluateRecoveryDecision(
   decision: RecoveryDecision,
   amount: number,
