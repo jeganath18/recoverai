@@ -3,7 +3,7 @@ import { FastifyInstance } from "fastify";
 import { prisma } from "../db/prisma";
 import { Prisma } from "@prisma/client";
 import { recoveryDecisionQueue } from "../queue/recovery.queue";
-import { markPaymentRecovered } from "../services/recovery-state.service";
+import { reconcileCapturedPayment } from "../services/payment-reconciliation.service";
 
 
 export async function razorpayWebhook(app: FastifyInstance) {
@@ -15,6 +15,13 @@ export async function razorpayWebhook(app: FastifyInstance) {
             },
         },
         async (request, reply) => {
+            console.log("🔥 RAZORPAY WEBHOOK HIT", {
+                event: (request.body as any)?.event,
+                eventId: request.headers["x-razorpay-event-id"],
+                signaturePresent: Boolean(
+                    request.headers["x-razorpay-signature"],
+                ),
+            });
             const webhookSecret = process.env.RAZORPAY_WEBHOOK_SECRET;
 
             if (!webhookSecret) {
@@ -98,13 +105,45 @@ export async function razorpayWebhook(app: FastifyInstance) {
 
             const paymentId = paymentEntity?.id;
 
-            const payment = paymentId
+            console.log("📦 Razorpay event received:", {
+                eventType,
+                paymentId: paymentEntity?.id,
+                orderId: paymentEntity?.order_id,
+            });
+
+            let payment = paymentId
                 ? await prisma.payment.findUnique({
                     where: {
                         razorpayId: paymentId,
                     },
                 })
                 : null;
+
+            if (!payment && paymentEntity?.order_id && paymentId) {
+                const order = await prisma.order.findUnique({
+                    where: {
+                        razorpayId: paymentEntity.order_id,
+                    },
+                });
+
+                if (order) {
+                    payment = await prisma.payment.create({
+                        data: {
+                            razorpayId: paymentId,
+                            orderId: order.id,
+                            customerId: order.customerId,
+                            amount: paymentEntity.amount ?? order.amount,
+                            currency: paymentEntity.currency ?? order.currency,
+                            status:
+                                eventType === "payment.failed"
+                                    ? "FAILED"
+                                    : "CREATED",
+                            failureReason:
+                                paymentEntity.error_description ?? null,
+                        },
+                    });
+                }
+            }
 
             try {
                 await prisma.paymentEvent.create({
@@ -152,11 +191,18 @@ export async function razorpayWebhook(app: FastifyInstance) {
                 );
             }
 
+            console.log("🔎 Capture handling:", {
+                eventType,
+                paymentFound: Boolean(payment),
+                localPaymentId: payment?.id,
+                razorpayPaymentId: paymentId,
+            });
+
             if (eventType === "payment.captured" && payment?.id) {
                 try {
-                    const result = await markPaymentRecovered(
+                    const result = await reconcileCapturedPayment(
                         payment.id,
-                        "razorpay",
+                        razorpayEventId,
                     );
 
                     request.log.info(
