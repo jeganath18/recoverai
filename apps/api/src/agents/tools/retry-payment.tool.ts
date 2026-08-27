@@ -204,6 +204,16 @@ export async function retryPaymentTool(
       },
     });
 
+    const localOrder = await prisma.order.create({
+      data: {
+        razorpayId: order.id,
+        amount: Number(order.amount),
+        currency: order.currency,
+        status: order.status,
+        customerId: payment.customerId,
+      },
+    });
+
     /*
      * Persist successful execution.
      *
@@ -219,6 +229,7 @@ export async function retryPaymentTool(
         externalId: order.id,
         output: {
           orderId: order.id,
+          localOrderId: localOrder.id,
           amount: order.amount,
           currency: order.currency,
           status: order.status,
