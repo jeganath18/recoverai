@@ -1,0 +1,77 @@
+import { prisma } from "../db/prisma";
+
+export async function getRecoveryMetrics() {
+  const [
+    totalCases,
+    recoveredCases,
+    exhaustedCases,
+    manualReviewCases,
+    retryingCases,
+    outreachCases,
+  ] = await Promise.all([
+    prisma.recoveryCase.count(),
+
+    prisma.recoveryCase.count({
+      where: {
+        status: "RECOVERED",
+      },
+    }),
+
+    prisma.recoveryCase.count({
+      where: {
+        status: "EXHAUSTED",
+      },
+    }),
+
+    prisma.recoveryCase.count({
+      where: {
+        status: "MANUAL_REVIEW",
+      },
+    }),
+
+    prisma.recoveryCase.count({
+      where: {
+        status: "RETRYING",
+      },
+    }),
+
+    prisma.recoveryCase.count({
+      where: {
+        status: "OUTREACH",
+      },
+    }),
+  ]);
+
+  const amounts =
+    await prisma.recoveryCase.aggregate({
+      _sum: {
+        amountAtRisk: true,
+        amountRecovered: true,
+      },
+    });
+
+  const amountAtRisk =
+    amounts._sum.amountAtRisk ?? 0;
+
+  const amountRecovered =
+    amounts._sum.amountRecovered ?? 0;
+
+  return {
+    totalCases,
+    recoveredCases,
+    exhaustedCases,
+    manualReviewCases,
+    retryingCases,
+    outreachCases,
+    amountAtRisk,
+    amountRecovered,
+    recoveryRate:
+      totalCases === 0
+        ? 0
+        : recoveredCases / totalCases,
+    revenueRecoveryRate:
+      amountAtRisk === 0
+        ? 0
+        : amountRecovered / amountAtRisk,
+  };
+}
