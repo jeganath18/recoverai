@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8" />
+  <title>RecoverAI Recovery Checkout</title>
+
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+</head>
+
+<body>
+
+  <h1>RecoverAI</h1>
+  <h2>Payment Recovery</h2>
+
+  <p>
+    Recovery amount:
+    <strong>₹2,500</strong>
+  </p>
+
+  <button id="pay">
+    Complete Recovery Payment
+  </button>
+
+  <script>
+    const orderId = "order_TUsxvyrmQAAYQU";
+
+    document
+      .getElementById("pay")
+      .onclick = function () {
+
+        const options = {
+          key: "rzp_test_TSMxbzZY2UNAy0",
+
+          amount: 250000,
+          currency: "INR",
+
+          name: "RecoverAI",
+          description: "Payment Recovery",
+
+          order_id: orderId,
+
+          handler: function (response) {
+
+            console.log(
+              "Recovery payment successful:",
+              response
+            );
+
+            alert(
+              "Payment successful!\n\n" +
+              "Payment ID: " +
+              response.razorpay_payment_id
+            );
+          },
+
+          modal: {
+            ondismiss: function () {
+              console.log(
+                "Recovery checkout closed"
+              );
+            }
+          }
+        };
+
+        const rzp =
+          new Razorpay(options);
+
+        rzp.on(
+          "payment.failed",
+          function (response) {
+
+            console.error(
+              "Recovery payment failed:",
+              response
+            );
+
+          }
+        );
+
+        rzp.open();
+      };
+  </script>
+
+</body>
+</html>
