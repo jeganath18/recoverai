@@ -1,5 +1,5 @@
 import { FastifyInstance } from "fastify";
-
+import { getRecoveryMetrics } from "../services/recovery-metrics.service"
 import { prisma } from "../db/prisma";
 import { razorpay } from "../services/razorpay.service";
 
@@ -101,4 +101,10 @@ export async function recoveryRoutes(
       });
     },
   );
+  app.get(
+  "/recovery/metrics",
+  async () => {
+    return getRecoveryMetrics();
+  },
+);
 }
