@@ -138,8 +138,8 @@ export const recoveryDecisionWorker =
             });
 
             /*
-             * 7. Audit policy decision.
-             */
+  * 7. Audit policy decision.
+  */
             await prisma.auditEvent.create({
                 data: {
                     caseId: recoveryCase.id,
@@ -151,6 +151,22 @@ export const recoveryDecisionWorker =
                         amount: context.payment.amount,
                     },
                     output: agentResult.policy,
+                },
+            });
+
+            /*
+             * Persist the policy-authorized action.
+             *
+             * This becomes the source of truth for execution
+             * workers such as retry-payment.tool.
+             */
+            await prisma.recoveryCase.update({
+                where: {
+                    id: recoveryCase.id,
+                },
+                data: {
+                    recommendedAction:
+                        agentResult.policy.action,
                 },
             });
 
@@ -204,7 +220,6 @@ export const recoveryDecisionWorker =
                     attemptNumber: nextAttempt,
                 };
             }
-
             /*
              * 10. OUTREACH.
              */
