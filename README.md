@@ -132,7 +132,7 @@ The Overview page provides a high-level operational view of the recovery system.
 | Revenue recovery rate | % of at-risk revenue recovered |
 | Attempt success rate | % of recovery attempts that succeeded |
 
-> **Screenshot:** `docs/screenshots/overview.png`
+![RecoverAI Overview Page](docs/screenshots/overview.png)
 
 The Overview page is designed to answer one question immediately: **"How is RecoverAI performing right now?"**
 
@@ -152,7 +152,7 @@ The Recovery Cases page provides an operational queue of payment recovery cases.
 
 Operators can use this page to identify cases requiring attention and drill into individual recovery journeys.
 
-> **Screenshot:** `docs/screenshots/recovery-cases.png`
+![RecoverAI Recovery Cases Page](docs/screenshots/recovery-cases.png)
 
 ### Case Details
 
@@ -207,7 +207,7 @@ The page provides visibility into:
 - Reconciliation
 - State transitions
 
-> **Screenshot:** `docs/screenshots/case-details.png`
+![RecoverAI Case Details Page](docs/screenshots/case-details.png)
 
 ### Revenue
 
@@ -225,7 +225,7 @@ Outstanding Revenue
 
 This allows operators to understand the financial impact of the recovery engine rather than only looking at technical execution metrics.
 
-> **Screenshot:** `docs/screenshots/revenue.png`
+![RecoverAI Reveue Page](docs/screenshots/revenue.png)
 
 ### Batch Recovery
 
@@ -236,7 +236,7 @@ The Batch Recovery page provides an aggregate view of multiple recovery cases, i
 - Recovery rate / Revenue recovery rate
 - Total recovery attempts / Successful attempts
 
-> **Screenshot:** `docs/screenshots/batch-recovery.png`
+![RecoverAI Batch Recovery Page](docs/screenshots/batch-recovery.png)
 
 ### Policy
 
@@ -268,7 +268,67 @@ STOP_AND_REVIEW
 No automated payment execution
 ```
 
-> **Screenshot:** `docs/screenshots/policy.png`
+![RecoverAI Policy Page](docs/screenshots/policy.png)
+
+### Recovery Checkout
+
+The Recovery Checkout page is the customer-facing surface where a recovery payment is actually completed. It is generated only after the AI Diagnosis → Policy Evaluation → Authorized Action sequence has approved a recovery action — the customer never sees this page unless the system has already determined it is safe to collect payment.
+
+```text
+Recovery Order Created
+        ↓
+Recovery Checkout Page
+        ↓
+Customer Completes Payment
+        ↓
+Razorpay Payment Event
+        ↓
+Payment Webhook
+        ↓
+Reconciliation
+```
+
+The page surfaces the minimum information required to complete the recovery, and nothing more:
+
+- Recovery amount (matches `amountAtRisk` for the case)
+- Associated recovery order ID
+- A single call-to-action to complete payment
+- Real-time status once payment is submitted
+
+![RecoverAI Recovery Checkout](docs/screenshots/recovery-checkout.png)
+
+### Webhook-Driven Completion
+
+The checkout page itself never marks a case as recovered. It only *initiates* payment — the source of truth is the provider webhook, not the browser session.
+
+```text
+Customer Completes Payment
+          ↓
+Razorpay Payment Event
+          ↓
+Payment Webhook (server-side)
+          ↓
+Signature Verification
+          ↓
+Recovery Attempt Matched
+          ↓
+RecoveryCase.status = RECOVERED
+```
+
+This means:
+
+- A closed tab, network drop, or browser crash after payment does not affect reconciliation
+- The frontend is treated as untrusted — it cannot self-report success
+- Duplicate webhook deliveries are deduplicated via the persisted provider event ID
+- The checkout UI reflects payment status by polling case state, not by assuming success client-side
+
+```text
+FRAUD_RISK
+     ↓
+STOP_AND_REVIEW
+     ↓
+Recovery Checkout is never generated
+```
 
 ---
 
