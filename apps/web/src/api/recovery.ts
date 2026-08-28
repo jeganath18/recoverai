@@ -177,3 +177,59 @@ export async function getRecoveryBatch(): Promise<RecoveryBatch> {
     return response.json();
 }
 
+export async function sendCustomerOutreach(
+    caseId: string,
+    channel: "EMAIL" | "SMS" | "WHATSAPP" = "EMAIL",
+) {
+    const response = await fetch(
+        `${API_BASE_URL}/recovery/cases/${caseId}/outreach`,
+        {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                channel,
+            }),
+        },
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(
+            data.error ?? "Failed to send customer outreach",
+        );
+    }
+
+    return data;
+}
+
+
+export async function createOutreachPayment(
+    caseId: string,
+) {
+    const response = await fetch(
+        `${API_BASE_URL}/recovery/cases/${caseId}/outreach/pay`,
+        {
+            method: "POST",
+        },
+    );
+
+    const data = await response.json();
+
+    if (!response.ok) {
+        throw new Error(
+            data.error ??
+                "Failed to create recovery payment",
+        );
+    }
+
+    return data as {
+        caseId: string;
+        orderId: string;
+        amount: number;
+        currency: string;
+    };
+}
+

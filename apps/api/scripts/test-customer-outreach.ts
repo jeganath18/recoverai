@@ -1,98 +1,240 @@
 import { prisma } from "../src/db/prisma";
-import { outreachTool } from "../src/agents/tools/outreach.tool";
+import { recoveryDecisionQueue } from "../src/queue/recovery.queue";
+import { razorpay } from "../src/services/razorpay.service";
+
+async function waitForOutreach(paymentId: string) {
+  for (let i = 0; i < 30; i++) {
+    const recoveryCase =
+      await prisma.recoveryCase.findUnique({
+        where: {
+          paymentId,
+        },
+        include: {
+          attempts: true,
+        },
+      });
+
+    if (
+      recoveryCase &&
+      recoveryCase.recommendedAction ===
+        "CUSTOMER_OUTREACH" &&
+      recoveryCase.outreachAttempts > 0
+    ) {
+      return recoveryCase;
+    }
+
+    await new Promise((resolve) =>
+      setTimeout(resolve, 1000),
+    );
+  }
+
+  throw new Error(
+    "Outreach worker did not complete within 30 seconds.",
+  );
+}
 
 async function main() {
-  console.log("🧪 Creating Customer Outreach test case...\n");
-
-  /*
-   * 1. Create a fake failed payment.
-   *
-   * This is local test data only.
-   * No real Razorpay payment is created here.
-   */
-  const payment = await prisma.payment.create({
-    data: {
-      razorpayId: `pay_test_outreach_${Date.now()}`,
-      amount: 290000,
-      currency: "INR",
-      status: "FAILED",
-      failureReason: "Insufficient funds",
-    },
-  });
-
-  console.log("💳 Payment created:");
-  console.log({
-    id: payment.id,
-    razorpayId: payment.razorpayId,
-    amount: payment.amount,
-    status: payment.status,
-  });
-
-  /*
-   * 2. Create the recovery case.
-   */
-  const recoveryCase =
-    await prisma.recoveryCase.create({
-      data: {
-        paymentId: payment.id,
-        amountAtRisk: payment.amount,
-        status: "OUTREACH",
-        failureReason: "Insufficient funds",
-        recommendedAction: "CUSTOMER_OUTREACH",
-      },
-    });
-
-  console.log("\n📂 Recovery case created:");
-  console.log({
-    id: recoveryCase.id,
-    status: recoveryCase.status,
-    recommendedAction:
-      recoveryCase.recommendedAction,
-  });
-
-  /*
-   * 3. Execute the same outreach tool
-   *    used by the Outreach Worker.
-   */
-  const attempt = await outreachTool(
-    recoveryCase.id,
-    payment.id,
-    1,
+  console.log("\n");
+  console.log(
+    "══════════════════════════════════════════",
+  );
+  console.log(
+    "     RecoverAI — CUSTOMER OUTREACH DEMO",
+  );
+  console.log(
+    "══════════════════════════════════════════",
   );
 
-  console.log("\n📨 Outreach executed:");
-  console.log({
-    id: attempt.id,
-    action: attempt.action,
-    status: attempt.status,
-    attemptNumber: attempt.attemptNumber,
-    output: attempt.output,
-  });
+  // --------------------------------------------------
+  // 1. Create failed payment
+  // --------------------------------------------------
 
-  /*
-   * 4. Re-read everything from the DB.
-   */
-  const finalCase =
-    await prisma.recoveryCase.findUnique({
-      where: {
-        id: recoveryCase.id,
-      },
-      include: {
-        payment: true,
-        attempts: true,
+  const payment =
+    await prisma.payment.create({
+      data: {
+        razorpayId:
+          `pay_test_outreach_${Date.now()}`,
+        amount: 290000,
+        currency: "INR",
+        status: "FAILED",
+        failureReason: "Insufficient funds",
       },
     });
 
-  console.log("\n✅ Final database state:");
-  console.dir(finalCase, {
-    depth: null,
-  });
+  console.log("\n💳 FAILED PAYMENT");
+  console.log(
+    "──────────────────────────────────────────",
+  );
+  console.log("Payment ID :", payment.id);
+  console.log("Amount     : ₹2,900");
+  console.log("Currency   : INR");
+  console.log("Reason     : Insufficient funds");
+
+  // --------------------------------------------------
+  // 2. Trigger REAL AI decision
+  // --------------------------------------------------
+
+  console.log("\n🤖 RECOVERY AI");
+  console.log(
+    "──────────────────────────────────────────",
+  );
+
+  const job =
+    await recoveryDecisionQueue.add(
+      "analyze-failed-payment",
+      {
+        paymentId: payment.id,
+        failureReason: "Insufficient funds",
+        razorpayEventId:
+          `test_outreach_event_${Date.now()}`,
+      },
+      {
+        jobId:
+          `demo-outreach-${payment.id}`,
+      },
+    );
+
+  console.log(
+    "Decision Job :",
+    job.id,
+  );
+
+  console.log(
+    "Waiting for AI + Policy + Outreach...",
+  );
+
+  // --------------------------------------------------
+  // 3. Wait for outreach worker
+  // --------------------------------------------------
+
+  const recoveryCase =
+    await waitForOutreach(payment.id);
+
+  console.log("\n🧠 RECOVERY DECISION");
+  console.log(
+    "──────────────────────────────────────────",
+  );
+
+  console.log(
+    "Case ID            :",
+    recoveryCase.id,
+  );
+
+  console.log(
+    "Status             :",
+    recoveryCase.status,
+  );
+
+  console.log(
+    "Recommended Action :",
+    recoveryCase.recommendedAction,
+  );
+
+  console.log(
+    "Outreach Attempts  :",
+    recoveryCase.outreachAttempts,
+  );
+
+  // --------------------------------------------------
+  // 4. Create Razorpay recovery order
+  // --------------------------------------------------
+
+  console.log("\n💰 CREATING RECOVERY ORDER");
+  console.log(
+    "──────────────────────────────────────────",
+  );
+
+  if (
+    recoveryCase.recommendedAction !==
+    "CUSTOMER_OUTREACH"
+  ) {
+    throw new Error(
+      `Expected CUSTOMER_OUTREACH but received ${recoveryCase.recommendedAction}`,
+    );
+  }
+
+  if (recoveryCase.status !== "OUTREACH") {
+    throw new Error(
+      `Expected OUTREACH status but received ${recoveryCase.status}`,
+    );
+  }
+
+  const order =
+    await razorpay.orders.create({
+      amount: recoveryCase.amountAtRisk,
+      currency: payment.currency,
+      receipt:`outreach_${Date.now()}`,
+      notes: {
+        recoveryCaseId: recoveryCase.id,
+        paymentId: payment.id,
+        recoveryAction:
+          "CUSTOMER_OUTREACH",
+      },
+    });
+
+  console.log("\n✅ RAZORPAY ORDER CREATED");
+  console.log(
+    "──────────────────────────────────────────",
+  );
+
+  console.log(
+    "Order ID :",
+    order.id,
+  );
+
+  console.log(
+    "Amount   :",
+    `₹${Number(order.amount) / 100}`,
+  );
+
+  console.log(
+    "Currency :",
+    order.currency,
+  );
+
+  console.log(
+    "Status   :",
+    order.status,
+  );
+
+  // --------------------------------------------------
+  // 5. Final output for demo
+  // --------------------------------------------------
+
+  console.log("\n");
+  console.log(
+    "══════════════════════════════════════════",
+  );
+  console.log(
+    "        CUSTOMER OUTREACH READY",
+  );
+  console.log(
+    "══════════════════════════════════════════",
+  );
+
+  console.log("\nCase ID:");
+  console.log(recoveryCase.id);
+
+  console.log("\nRazorpay Order ID:");
+  console.log(order.id);
+
+  console.log("\nCheckout amount:");
+  console.log(
+    `₹${Number(order.amount) / 100}`,
+  );
+
+  console.log("\nUse this order ID:");
+  console.log(
+    `👉 ${order.id}`,
+  );
+
+  console.log("\n");
 }
 
 main()
   .catch((error) => {
     console.error(
-      "\n❌ Outreach test failed:",
+      "\n❌ Customer Outreach demo failed:",
       error,
     );
 

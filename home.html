@@ -1,71 +1,450 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>RecoverAI Recovery Checkout</title>
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0"
+  />
+
+  <title>RecoverAI — Payment Recovery</title>
 
   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #09090b;
+      color: #fafafa;
+      font-family:
+        Inter,
+        ui-sans-serif,
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+    }
+
+    .container {
+      width: min(460px, calc(100% - 32px));
+    }
+
+    .brand {
+      margin-bottom: 24px;
+      text-align: center;
+    }
+
+    .brand-name {
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-subtitle {
+      margin-top: 6px;
+      color: #71717a;
+      font-size: 13px;
+    }
+
+    .card {
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 16px;
+      background: rgba(24, 24, 27, 0.9);
+      padding: 28px;
+      box-shadow:
+        0 20px 60px rgba(0, 0, 0, 0.35);
+    }
+
+    .eyebrow {
+      margin-bottom: 8px;
+      color: #818cf8;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: -0.03em;
+    }
+
+    .description {
+      margin: 10px 0 24px;
+      color: #a1a1aa;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .payment-box {
+      margin-bottom: 20px;
+      padding: 18px;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .payment-label {
+      color: #71717a;
+      font-size: 12px;
+    }
+
+    .amount {
+      margin-top: 5px;
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+    }
+
+    .order-id {
+      margin-top: 8px;
+      overflow: hidden;
+      color: #71717a;
+      font-family: monospace;
+      font-size: 11px;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    button {
+      width: 100%;
+      border: 0;
+      border-radius: 9px;
+      padding: 13px 18px;
+      background: #6366f1;
+      color: white;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+      transition: 0.2s ease;
+    }
+
+    button:hover {
+      background: #818cf8;
+    }
+
+    button:disabled {
+      cursor: not-allowed;
+      opacity: 0.5;
+    }
+
+    .status {
+      margin-top: 16px;
+      color: #71717a;
+      font-size: 12px;
+      line-height: 1.5;
+      text-align: center;
+    }
+
+    .error {
+      color: #f87171;
+    }
+
+    .success {
+      color: #4ade80;
+    }
+
+    .hidden {
+      display: none;
+    }
+  </style>
 </head>
 
 <body>
+  <main class="container">
 
-  <h1>RecoverAI</h1>
-  <h2>Payment Recovery</h2>
+    <div class="brand">
+      <div class="brand-name">RecoverAI</div>
+      <div class="brand-subtitle">
+        Secure payment recovery
+      </div>
+    </div>
 
-  <p>
-    Recovery amount:
-    <strong>₹2,500</strong>
-  </p>
+    <section class="card">
 
-  <button id="pay">
-    Complete Recovery Payment
-  </button>
+      <div class="eyebrow">
+        Payment Recovery
+      </div>
+
+      <h1>Complete your payment</h1>
+
+      <p class="description">
+        Your previous payment could not be completed.
+        You can securely complete the recovery payment
+        below.
+      </p>
+
+      <div class="payment-box">
+
+        <div class="payment-label">
+          Recovery amount
+        </div>
+
+        <div
+          id="amount"
+          class="amount"
+        >
+          Loading...
+        </div>
+
+        <div
+          id="orderIdDisplay"
+          class="order-id"
+        ></div>
+
+      </div>
+
+      <button
+        id="pay"
+        disabled
+      >
+        Loading payment...
+      </button>
+
+      <div
+        id="status"
+        class="status"
+      >
+        Fetching payment details...
+      </div>
+
+    </section>
+  </main>
 
   <script>
-    const orderId = "order_TVGrJiJSpEiDeU";
+    // --------------------------------------------------
+    // Configuration
+    // --------------------------------------------------
 
-    document
-      .getElementById("pay")
-      .onclick = function () {
+    const API_BASE_URL =
+      "http://localhost:3000";
+
+    const RAZORPAY_KEY_ID =
+      "rzp_test_TSMxbzZY2UNAy0";
+
+
+    // --------------------------------------------------
+    // Get orderId from URL
+    //
+    // Example:
+    //
+    // home.html?orderId=order_TVGrJiJSpEiDeU
+    // --------------------------------------------------
+
+    const params =
+      new URLSearchParams(
+        window.location.search
+      );
+
+    const orderId =
+      params.get("orderId");
+
+
+    // --------------------------------------------------
+    // DOM elements
+    // --------------------------------------------------
+
+    const amountElement =
+      document.getElementById("amount");
+
+    const orderIdElement =
+      document.getElementById(
+        "orderIdDisplay"
+      );
+
+    const payButton =
+      document.getElementById("pay");
+
+    const statusElement =
+      document.getElementById("status");
+
+
+    // --------------------------------------------------
+    // Status helper
+    // --------------------------------------------------
+
+    function setStatus(
+      message,
+      type = ""
+    ) {
+      statusElement.textContent =
+        message;
+
+      statusElement.className =
+        `status ${type}`;
+    }
+
+
+    // --------------------------------------------------
+    // Validate order ID
+    // --------------------------------------------------
+
+    if (!orderId) {
+
+      setStatus(
+        "No recovery payment order was provided.",
+        "error"
+      );
+
+      payButton.disabled = true;
+
+    } else {
+
+      orderIdElement.textContent =
+        `Order: ${orderId}`;
+
+    }
+
+
+    // --------------------------------------------------
+    // Fetch order details
+    //
+    // This expects your API to expose:
+    //
+    // GET /recovery/orders/:orderId
+    // --------------------------------------------------
+
+   function loadOrder() {
+  if (!orderId) {
+    setStatus(
+      "No recovery payment order was provided.",
+      "error"
+    );
+
+    payButton.disabled = true;
+    return;
+  }
+
+  const amountParam =
+    params.get("amount");
+
+  const currency =
+    params.get("currency") || "INR";
+
+  if (!amountParam) {
+    setStatus(
+      "Payment amount is missing.",
+      "error"
+    );
+
+    payButton.disabled = true;
+    return;
+  }
+
+  const amount =
+    Number(amountParam);
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    setStatus(
+      "Invalid payment amount.",
+      "error"
+    );
+
+    payButton.disabled = true;
+    return;
+  }
+
+  amountElement.textContent =
+    new Intl.NumberFormat(
+      "en-IN",
+      {
+        style: "currency",
+        currency,
+        maximumFractionDigits: 0,
+      }
+    ).format(amount / 100);
+
+  orderIdElement.textContent =
+    `Order: ${orderId}`;
+
+  payButton.disabled = false;
+
+  payButton.textContent =
+    "Complete recovery payment";
+
+  setStatus(
+    "Your payment is ready to be completed."
+  );
+}
+
+    // --------------------------------------------------
+    // Open Razorpay Checkout
+    // --------------------------------------------------
+
+    payButton.onclick =
+      function () {
+
+        if (!orderId) {
+          return;
+        }
 
         const options = {
-          key: "rzp_test_TSMxbzZY2UNAy0",
 
-          amount: 250000,
-          currency: "INR",
+          key:
+            RAZORPAY_KEY_ID,
 
-          name: "RecoverAI",
-          description: "Payment Recovery",
+          order_id:
+            orderId,
 
-          order_id: orderId,
+          name:
+            "RecoverAI",
 
-          handler: function (response) {
+          description:
+            "Payment Recovery",
 
-            console.log(
-              "Recovery payment successful:",
-              response
-            );
+          handler:
+            function (response) {
 
-            alert(
-              "Payment successful!\n\n" +
-              "Payment ID: " +
-              response.razorpay_payment_id
-            );
-          },
+              console.log(
+                "Recovery payment successful:",
+                response
+              );
+
+              setStatus(
+                "Payment successful. Your recovery case is being updated.",
+                "success"
+              );
+
+              alert(
+                "Payment successful!\n\n" +
+                "Payment ID: " +
+                response.razorpay_payment_id
+              );
+            },
 
           modal: {
-            ondismiss: function () {
-              console.log(
-                "Recovery checkout closed"
-              );
-            }
+
+            ondismiss:
+              function () {
+
+                console.log(
+                  "Recovery checkout closed"
+                );
+
+                setStatus(
+                  "Checkout was closed. You can try again."
+                );
+              }
+
           }
+
         };
 
-        const rzp =
+
+        const razorpay =
           new Razorpay(options);
 
-        rzp.on(
+
+        razorpay.on(
           "payment.failed",
           function (response) {
 
@@ -74,11 +453,24 @@
               response
             );
 
+            setStatus(
+              "Payment failed. Please try again.",
+              "error"
+            );
           }
         );
 
-        rzp.open();
+
+        razorpay.open();
       };
+
+
+    // --------------------------------------------------
+    // Load order
+    // --------------------------------------------------
+
+    loadOrder();
+
   </script>
 
 </body>
