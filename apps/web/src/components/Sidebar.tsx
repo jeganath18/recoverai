@@ -37,11 +37,6 @@ const navigation = [
         icon: ShieldCheck,
         path: "/policy",
     },
-    {
-        label: "Settings",
-        icon: Settings,
-        path: "/settings",
-    },
 ];
 
 export function Sidebar() {
