@@ -17,6 +17,8 @@ import { Link, useParams } from "react-router-dom";
 
 import {
     getRecoveryCase,
+    sendCustomerOutreach,
+    createOutreachPayment,
     type AuditEvent,
     type RecoveryCase,
 } from "../api/recovery";
@@ -26,6 +28,38 @@ import { Sidebar } from "../components/Sidebar";
 import {
     formatINR,
 } from "../utils";
+
+declare global {
+    interface Window {
+        Razorpay: new (
+            options: RazorpayOptions,
+        ) => RazorpayInstance;
+    }
+}
+
+type RazorpayOptions = {
+    key: string;
+    amount: number;
+    currency: string;
+    name: string;
+    description: string;
+    order_id: string;
+    theme?: {
+        color?: string;
+    };
+    handler: (response: {
+        razorpay_payment_id: string;
+        razorpay_order_id: string;
+        razorpay_signature: string;
+    }) => void;
+    modal?: {
+        ondismiss?: () => void;
+    };
+};
+
+type RazorpayInstance = {
+    open: () => void;
+};
 
 function StatusBadge({
     status,
@@ -217,6 +251,8 @@ function getDiagnosis(
     };
 }
 
+
+
 export function CaseDetails() {
     const { id } = useParams<{
         id: string;
@@ -230,6 +266,127 @@ export function CaseDetails() {
 
     const [error, setError] =
         useState<string | null>(null);
+
+    const [actionLoading, setActionLoading] =
+        useState(false);
+
+    const [outreachSent, setOutreachSent] =
+        useState(false);
+
+    const [actionError, setActionError] =
+        useState<string | null>(null);
+
+    async function handleCustomerOutreach() {
+        if (!id) return;
+
+        try {
+            setActionLoading(true);
+            setActionError(null);
+
+            await sendCustomerOutreach(
+                id,
+                "EMAIL",
+            );
+
+            setOutreachSent(true);
+
+            await loadCase();
+        } catch (err) {
+            setActionError(
+                err instanceof Error
+                    ? err.message
+                    : "Unable to send customer outreach.",
+            );
+        } finally {
+            setActionLoading(false);
+        }
+    }
+
+    async function handleRecoveryPayment() {
+        if (!id) return;
+
+        try {
+            setActionLoading(true);
+            setActionError(null);
+
+            const payment =
+                await createOutreachPayment(id);
+
+            const razorpayKey =
+                import.meta.env
+                    .VITE_RAZORPAY_KEY_ID;
+
+            if (!razorpayKey) {
+                throw new Error(
+                    "VITE_RAZORPAY_KEY_ID is not configured.",
+                );
+            }
+
+            const options: RazorpayOptions = {
+                key: razorpayKey,
+
+                amount: payment.amount,
+
+                currency: payment.currency,
+
+                name: "RecoverAI",
+
+                description:
+                    "Revenue Recovery Payment",
+
+                order_id: payment.orderId,
+
+                theme: {
+                    color: "#6366f1",
+                },
+
+                handler: async (response) => {
+                    console.log(
+                        "Recovery payment completed:",
+                        response,
+                    );
+
+                    /*
+                     * IMPORTANT:
+                     *
+                     * Do not mark the case RECOVERED
+                     * here.
+                     *
+                     * Razorpay webhook +
+                     * backend reconciliation does that.
+                     */
+
+                    await new Promise(
+                        (resolve) =>
+                            setTimeout(resolve, 1500),
+                    );
+
+                    await loadCase();
+                },
+
+                modal: {
+                    ondismiss: () => {
+                        setActionLoading(false);
+                    },
+                },
+            };
+
+            const razorpay =
+                new window.Razorpay(options);
+
+            razorpay.open();
+
+        } catch (err) {
+            setActionError(
+                err instanceof Error
+                    ? err.message
+                    : "Unable to open recovery payment.",
+            );
+
+            setActionLoading(false);
+        }
+    }
+
 
     async function loadCase() {
         if (!id) return;
@@ -465,6 +622,123 @@ export function CaseDetails() {
                                     : "No diagnosis"}
                             </p>
                         </div>
+                    </section>
+
+                    {/* RECOVERY ACTION */}
+
+                    <section className="mb-6 rounded-xl border border-indigo-500/15 bg-indigo-500/[0.035] p-6">
+
+                        <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
+
+                            <div>
+
+                                <div className="mb-2 flex items-center gap-2">
+
+                                    <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-indigo-500/15 bg-indigo-500/10">
+
+                                        <Sparkles
+                                            size={15}
+                                            className="text-indigo-400"
+                                        />
+
+                                    </div>
+
+                                    <span className="text-xs uppercase tracking-[0.1em] text-indigo-300">
+
+                                        Recovery action
+
+                                    </span>
+
+                                </div>
+
+                                <p className="text-base font-medium text-white">
+                                    {recoveryCase.status === "RECOVERED"
+                                        ? "Recovery completed"
+                                        : recoveryCase.status === "EXHAUSTED"
+                                            ? "Recovery exhausted"
+                                            : recoveryCase.recommendedAction ===
+                                                "RETRY_PAYMENT"
+                                                ? "Automated retry authorized"
+                                                : recoveryCase.recommendedAction ===
+                                                    "CUSTOMER_OUTREACH"
+                                                    ? "Customer action required"
+                                                    : "Human intervention required"}
+                                </p>
+
+                                <p className="mt-1 max-w-xl text-xs leading-5 text-zinc-500">
+                                    {recoveryCase.status === "RECOVERED"
+                                        ? `₹${(
+                                            recoveryCase.amountRecovered / 100
+                                        ).toLocaleString("en-IN")} has been successfully recovered through ${recoveryCase.recommendedAction ===
+                                            "CUSTOMER_OUTREACH"
+                                            ? "customer outreach"
+                                            : "automated retry"}.`
+                                        : recoveryCase.status === "EXHAUSTED"
+                                            ? "The maximum recovery attempts have been reached. No further automated actions will be taken."
+                                            : recoveryCase.recommendedAction ===
+                                                "RETRY_PAYMENT"
+                                                ? "The recovery policy has authorized another payment attempt."
+                                                : recoveryCase.recommendedAction ===
+                                                    "CUSTOMER_OUTREACH"
+                                                    ? "The customer needs to complete a new recovery payment."
+                                                    : "Automated recovery has been stopped by policy. Review this case manually."}
+                                </p>
+
+                            </div>
+
+
+                            {/* RETRY */}
+
+                            {recoveryCase.recommendedAction ===
+                                "RETRY_PAYMENT" &&
+                                recoveryCase.status !==
+                                "RECOVERED" &&
+                                recoveryCase.status !==
+                                "EXHAUSTED" && (
+
+                                    <button
+                                        onClick={handleRecoveryPayment}
+                                        disabled={actionLoading}
+                                        className="shrink-0 rounded-lg bg-indigo-500 px-5 py-2.5 text-xs font-medium text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-50"
+                                    >
+
+                                        {actionLoading
+                                            ? "Opening checkout..."
+                                            : "Retry payment"}
+
+                                    </button>
+
+                                )}
+
+
+                           
+
+                            {/* MANUAL REVIEW */}
+
+                            {recoveryCase.recommendedAction ===
+                                "STOP_AND_REVIEW" && (
+
+                                    <div className="shrink-0 rounded-lg border border-amber-500/15 bg-amber-500/5 px-4 py-2.5 text-xs text-amber-300">
+
+                                        Automated recovery stopped
+
+                                    </div>
+
+                                )}
+
+                        </div>
+
+
+                        {actionError && (
+
+                            <div className="mt-4 rounded-lg border border-red-500/15 bg-red-500/5 px-4 py-3 text-xs text-red-300">
+
+                                {actionError}
+
+                            </div>
+
+                        )}
+
                     </section>
 
                     <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
