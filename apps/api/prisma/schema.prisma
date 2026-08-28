@@ -96,9 +96,10 @@ model RecoveryCase {
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
 
-  payment  Payment           @relation(fields: [paymentId], references: [id])
-  attempts RecoveryAttempt[]
-  audits   AuditEvent[]
+  payment                Payment           @relation(fields: [paymentId], references: [id])
+  attempts               RecoveryAttempt[]
+  outreachAttemptRecords OutreachAttempt[]
+  audits                 AuditEvent[]
 
   @@index([status])
 }
@@ -137,4 +138,21 @@ model AuditEvent {
   @@index([caseId])
   @@index([stage])
   @@index([actor])
+}
+
+model OutreachAttempt {
+  id            String   @id @default(cuid())
+  caseId        String
+  attemptNumber Int
+  channel       String
+  status        String
+  message       String
+  response      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  recoveryCase RecoveryCase @relation(fields: [caseId], references: [id])
+
+  @@unique([caseId, attemptNumber])
+  @@index([caseId])
 }

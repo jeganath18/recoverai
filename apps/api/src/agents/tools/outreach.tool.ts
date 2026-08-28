@@ -7,8 +7,39 @@ export async function outreachTool(
   paymentId: string,
   attemptNumber: number,
 ) {
+  if (attemptNumber > MAX_OUTREACH_ATTEMPTS) {
+    throw new Error(
+      "Maximum outreach attempts exceeded",
+    );
+  }
+
+  const recoveryCase =
+    await prisma.recoveryCase.findUnique({
+      where: {
+        id: caseId,
+      },
+    });
+
+  if (!recoveryCase) {
+    throw new Error(
+      `Recovery case ${caseId} not found`,
+    );
+  }
+
+  if (recoveryCase.paymentId !== paymentId) {
+    throw new Error(
+      "Payment does not belong to recovery case",
+    );
+  }
+
+  if (recoveryCase.status !== "OUTREACH") {
+    throw new Error(
+      `Case is not in OUTREACH state: ${recoveryCase.status}`,
+    );
+  }
+
   if (
-    attemptNumber >
+    recoveryCase.outreachAttempts >=
     MAX_OUTREACH_ATTEMPTS
   ) {
     throw new Error(
@@ -45,6 +76,7 @@ export async function outreachTool(
           channel: "EMAIL_SIMULATION",
           message:
             "Your recent payment failed. Please retry your payment.",
+          paymentAction: "PAY_NOW",
         },
       },
     });
@@ -56,6 +88,25 @@ export async function outreachTool(
     data: {
       outreachAttempts: {
         increment: 1,
+      },
+    },
+  });
+
+  await prisma.auditEvent.create({
+    data: {
+      caseId,
+      stage: "CUSTOMER_OUTREACH",
+      actor: "system",
+      input: {
+        paymentId,
+        attemptNumber,
+        channel: "EMAIL_SIMULATION",
+      },
+      output: {
+        status: "SENT",
+        recoveryAttemptId: attempt.id,
+        message:
+          "Your recent payment failed. Please retry your payment.",
       },
     },
   });
