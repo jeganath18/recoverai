@@ -28,6 +28,7 @@ export async function retryPaymentTool(
       },
       include: {
         recoveryCase: true,
+        order: true
       },
     });
 
@@ -161,7 +162,7 @@ export async function retryPaymentTool(
         caseId: recoveryCase.id,
         attemptNumber,
         action: "RETRY_PAYMENT",
-        status: "STARTED",
+        status: "PENDING",
         idempotencyKey,
         input: {
           paymentId,
