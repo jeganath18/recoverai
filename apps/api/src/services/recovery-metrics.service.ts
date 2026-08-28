@@ -8,6 +8,9 @@ export async function getRecoveryMetrics() {
     manualReviewCases,
     retryingCases,
     outreachCases,
+    openCases,
+    totalAttempts,
+    successfulAttempts,
   ] = await Promise.all([
     prisma.recoveryCase.count(),
 
@@ -40,38 +43,70 @@ export async function getRecoveryMetrics() {
         status: "OUTREACH",
       },
     }),
+
+    prisma.recoveryCase.count({
+      where: {
+        status: "OPEN",
+      },
+    }),
+
+    prisma.recoveryAttempt.count(),
+
+    prisma.recoveryAttempt.count({
+      where: {
+        status: "SUCCEEDED",
+      },
+    }),
   ]);
 
-  const amounts =
-    await prisma.recoveryCase.aggregate({
-      _sum: {
-        amountAtRisk: true,
-        amountRecovered: true,
-      },
-    });
+  const amounts = await prisma.recoveryCase.aggregate({
+    _sum: {
+      amountAtRisk: true,
+      amountRecovered: true,
+    },
+  });
 
-  const amountAtRisk =
-    amounts._sum.amountAtRisk ?? 0;
-
-  const amountRecovered =
-    amounts._sum.amountRecovered ?? 0;
+  const amountAtRisk = amounts._sum.amountAtRisk ?? 0;
+  const amountRecovered = amounts._sum.amountRecovered ?? 0;
 
   return {
-    totalCases,
-    recoveredCases,
-    exhaustedCases,
-    manualReviewCases,
-    retryingCases,
-    outreachCases,
-    amountAtRisk,
-    amountRecovered,
-    recoveryRate:
-      totalCases === 0
-        ? 0
-        : recoveredCases / totalCases,
-    revenueRecoveryRate:
-      amountAtRisk === 0
-        ? 0
-        : amountRecovered / amountAtRisk,
+    cases: {
+      total: totalCases,
+      recovered: recoveredCases,
+      open: openCases,
+      retrying: retryingCases,
+      outreach: outreachCases,
+      manualReview: manualReviewCases,
+      exhausted: exhaustedCases,
+    },
+
+    revenue: {
+      amountAtRisk,
+      amountRecovered,
+      amountOutstanding: Math.max(
+        amountAtRisk - amountRecovered,
+        0,
+      ),
+    },
+
+    performance: {
+      recoveryRate:
+        totalCases === 0
+          ? 0
+          : recoveredCases / totalCases,
+
+      revenueRecoveryRate:
+        amountAtRisk === 0
+          ? 0
+          : amountRecovered / amountAtRisk,
+
+      totalAttempts,
+      successfulAttempts,
+
+      retrySuccessRate:
+        totalAttempts === 0
+          ? 0
+          : successfulAttempts / totalAttempts,
+    },
   };
 }
